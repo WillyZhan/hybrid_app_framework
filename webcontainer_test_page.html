@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebContainer 共用測試頁</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; background: #f9f9f9; }
+    pre { background: #eee; padding: 1rem; }
+    button { margin: 0.5rem 0; padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>WebContainer 共用測試頁</h1>
+
+  <p>App 注入的 WebContainerConfig 資料：</p>
+  <pre id="config"><em>尚未注入</em></pre>
+
+  <button id="btn-close">關閉 WebView</button><br/>
+  <button id="btn-deeplink">觸發 Deeplink</button><br/>
+  <button id="btn-event">傳送自訂事件</button><br/>
+  <button id="btn-refresh-config">要求刷新 Config</button><br/>
+  <button id="btn-refresh-token">要求刷新 Token</button>
+
+  <script>
+    function updateConfigDisplay() {
+      const ctx = window.__WEB_CONTAINER_CONFIG__;
+      if (ctx) {
+        console.log("[WEB] 注入成功 =", ctx);
+        document.getElementById("config").innerText = JSON.stringify(ctx, null, 2);
+      }
+    }
+
+    function waitForConfig() {
+      const ctx = window.__WEB_CONTAINER_CONFIG__;
+      if (ctx) {
+        updateConfigDisplay();
+      } else {
+        console.log("[WEB] WebContainerConfig 尚未注入，等待中...");
+        setTimeout(waitForConfig, 200);
+      }
+    }
+
+    window.__refreshWebContainerConfig__ = function () {
+      console.log("[WEB] 收到 __refreshWebContainerConfig__()");
+      updateConfigDisplay();
+    };
+
+    function sendToApp(name, data) {
+      const jsonStr = data ? JSON.stringify(data) : "";
+
+      if (window.HybridAppBridge && typeof window.HybridAppBridge.postMessage === "function") {
+        console.log("[WEB] 發送至 Android:", name, jsonStr);
+        window.HybridAppBridge.postMessage(name, jsonStr);
+      } else if (window.webkit?.messageHandlers?.HybridAppBridge) {
+        console.log("[WEB] 發送至 iOS:", name, jsonStr);
+        try {
+          window.webkit.messageHandlers.HybridAppBridge.postMessage({
+            name: name,
+            json: data ?? undefined
+          });
+        } catch (e) {
+          console.error("[WEB] iOS postMessage 錯誤:", e);
+        }
+      } else {
+        console.warn("[WEB] HybridAppBridge 不存在");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      waitForConfig();
+
+      document.getElementById("btn-close").onclick = () =>
+        sendToApp("closeContainer");
+
+      document.getElementById("btn-deeplink").onclick = () =>
+        sendToApp("openDeepLink", { url: "yourapp://home" });
+
+      document.getElementById("btn-event").onclick = () =>
+        sendToApp("logEvent", {
+          name: "custom_event",
+          data: { key: "value", timestamp: new Date().toISOString() }
+        });
+
+      document.getElementById("btn-refresh-config").onclick = () =>
+        sendToApp("refreshWebContainerConfig");
+
+      document.getElementById("btn-refresh-token").onclick = () =>
+        sendToApp("refreshToken");
+    });
+  </script>
+</body>
+</html>
